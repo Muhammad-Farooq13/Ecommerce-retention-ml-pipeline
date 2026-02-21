@@ -1,0 +1,22 @@
+project_name: ecommerce-retention
+
+data:
+  input_csv: ecommerce_sales_data.csv
+  transactions_path: artifacts/data/transactions.parquet
+  features_path: artifacts/data/customer_features.parquet
+  validation_predictions_path: artifacts/models/validation_predictions.parquet
+
+features:
+  history_window_days: 180
+  prediction_horizon_days: 30
+
+model:
+  random_state: 42
+  cv_folds: 5
+  n_estimators: 400
+  max_depth: 12
+  min_samples_leaf: 4
+
+outputs:
+  model_bundle_path: artifacts/models/model_bundle.joblib
+  metrics_path: artifacts/models/metrics.json

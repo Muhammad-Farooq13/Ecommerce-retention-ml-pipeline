@@ -1,0 +1,11 @@
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.5
+pyyaml>=6.0
+joblib>=1.4
+pyarrow>=17.0
+pytest>=8.3
+pytest-cov>=4.1
+pytest-mock>=3.11
+ruff>=0.6
+black>=24.8

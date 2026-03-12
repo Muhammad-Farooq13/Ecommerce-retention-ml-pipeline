@@ -1,246 +1,172 @@
-# Ecommerce Retention & Expected Spend Project
+# Ecommerce Retention ML Pipeline
 
-An end-to-end, production-style data science project that predicts:
-1. **Probability of repeat purchase** in the next 30 days
-2. **Expected customer spend** over the same horizon
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.36%2B-FF4B4B.svg)](https://streamlit.io/)
+[![scikit-learn](https://img.shields.io/badge/scikit--learn-1.5%2B-orange.svg)](https://scikit-learn.org/)
+[![CI](https://github.com/Muhammad-Farooq13/Ecommerce-retention-ml-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/Muhammad-Farooq13/Ecommerce-retention-ml-pipeline/actions)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-This repository is designed for portfolio visibility and job interviews, with reproducible pipelines, model evaluation, deployment hooks, and CI.
+End-to-end ML pipeline for **customer retention prediction** in e-commerce. Predicts which customers will repeat-purchase and estimates their expected revenue using a two-stage Random Forest architecture trained on 3,500 real transactions.
 
-## Owner
+---
 
-- Name: Muhammad Farooq
-- Email: mfarooqshafee333@gmail.com
-- GitHub: https://github.com/Muhammad-Farooq-13
+## Features
 
-## 1) Problem Statement
+| Area | Details |
+|---|---|
+| **Task** | Binary classification (repeat purchase) + regression (expected spend) |
+| **Dataset** | 3,500 real e-commerce transactions · 3 categories · 4 regions · 10 products |
+| **Features** | RFM: frequency, monetary (sum/mean), recency, tenure, active days, avg order gap |
+| **Model** | Stage 1: RandomForestClassifier · Stage 2: RandomForestRegressor (positive-only) |
+| **Output** | P(repeat purchase) + Expected Spend = P × Conditional Spend |
+| **Evaluation** | ROC-AUC, PR-AUC (classifier) · RMSE (spend) · Decile Lift |
+| **API** | FastAPI REST (`/health`, `/predict`, `/predict/batch`) |
+| **Dashboard** | Streamlit 5-tab interactive app with live RFM prediction |
+| **CI/CD** | GitHub Actions — Python 3.11/3.12, ruff lint, pytest + coverage, Docker |
 
-Marketing teams often spend retention budget on broad segments. This project scores customers by likely repeat purchase and expected spend so campaigns can prioritize high-value targets.
+---
 
-### Objectives
-- Build reproducible customer-level features from transaction data
-- Train a propensity model and expected-spend estimator
-- Evaluate both ML and business metrics (lift and expected value)
-- Deploy scoring behind a lightweight API
+## Quick Start
 
-### Success Criteria
-- Strong ranking quality (ROC-AUC / PR-AUC)
-- Positive lift in top decile vs baseline
-- Reproducible pipeline with one command
-
-## 2) Project Structure
-
-```text
-.
-├── configs/
-│   └── base.yaml
-├── src/
-│   ├── data/make_dataset.py
-│   ├── features/build_features.py
-│   ├── models/train.py
-│   ├── models/evaluate.py
-│   ├── inference/predict.py
-│   └── api/main.py
-├── scripts/run_pipeline.py
-├── tests/test_features.py
-├── notebooks/
-│   └── 01_eda_customer_behavior.ipynb
-├── artifacts/                 # generated outputs (ignored by git)
-├── Dockerfile
-├── Makefile
-└── pyproject.toml
-```
-
-### Architecture Diagram
-
-```mermaid
-flowchart TD
-  A[ecommerce_sales_data.csv] --> B[src/data/make_dataset.py]
-  B --> C[artifacts/data/transactions.parquet]
-  C --> D[src/features/build_features.py]
-  D --> E[artifacts/data/customer_features.parquet]
-  E --> F[src/models/train.py]
-  F --> G[artifacts/models/model_bundle.joblib]
-  F --> H[artifacts/models/metrics.json]
-  E --> I[src/models/evaluate.py]
-  I --> J[artifacts/models/business_metrics.json]
-  G --> K[src/api/main.py]
-  K --> L[/predict endpoint]
-```
-
-## 3) Quickstart
-
-### Setup
 ```bash
-python -m pip install -U pip
-python -m pip install -e .[dev]
+git clone https://github.com/Muhammad-Farooq13/Ecommerce-retention-ml-pipeline.git
+cd Ecommerce-retention-ml-pipeline
+pip install -r requirements.txt
+pip install -e .
+
+# Generate demo bundle (trains models, saves artefacts)
+python train_demo.py
+
+# Launch Streamlit dashboard
+streamlit run streamlit_app.py
+
+# OR start FastAPI server
+uvicorn src.api.main:app --reload
 ```
 
-### Run Full Pipeline
+---
+
+## Model Results (Demo Bundle)
+
+| Metric | Value |
+|---|---|
+| CV ROC-AUC | 1.0000 |
+| CV PR-AUC | 1.0000 |
+| RMSE Expected Spend | ~$193 |
+| Training Customers | 108 |
+| Positive Rate | ~3.7% |
+
+*Demo uses monthly product×region cohorts as synthetic customers — ROC-AUC=1.0 reflects clean separability of this synthetic setup. Production metrics on real individual customer data typically reach 0.70–0.85.*
+
+---
+
+## Two-Stage Architecture
+
+```
+Input: RFM features
+  │
+  ├─ Stage 1: RandomForestClassifier (balanced)
+  │    → P(repeat purchase)  [0..1]
+  │
+  └─ Stage 2: RandomForestRegressor (trained on positive-label customers only)
+       → Conditional Spend ($)
+
+Output: Expected Spend = P(repeat) × Conditional Spend
+```
+
+---
+
+## Dataset
+
+**`ecommerce_sales_data.csv`** — 3,500 rows:
+- **Order Date** — Jan 2022 – Dec 2024
+- **Product Name** — 10 products (Laptop, Smartphone, Tablet, …)
+- **Category** — Electronics, Office, Accessories
+- **Region** — North, East, South, West
+- **Quantity**, **Sales**, **Profit**
+
+---
+
+## FastAPI Endpoints
+
 ```bash
+# Health check
+curl http://localhost:8000/health
+
+# Single customer prediction
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+    "frequency_orders": 5,
+    "monetary_sum": 1200.0,
+    "monetary_mean": 240.0,
+    "active_days": 12,
+    "recency_days": 15,
+    "customer_tenure_days": 90,
+    "avg_order_gap_days": 18.0
+  }'
+```
+
+---
+
+## Docker
+
+```bash
+docker-compose up --build
+# API at http://localhost:8000
+```
+
+---
+
+## Full Pipeline
+
+```bash
+# Run full MLOps pipeline (make_dataset → build_features → train_models → evaluate)
 python scripts/run_pipeline.py
+
+# Or step by step:
+python -m src.data.make_dataset
+python -m src.features.build_features
+python -m src.models.train
+python -m src.models.evaluate
 ```
 
-Generated outputs:
-- `artifacts/data/transactions.parquet`
-- `artifacts/data/customer_features.parquet`
-- `artifacts/models/model_bundle.joblib`
-- `artifacts/models/metrics.json`
-- `artifacts/models/business_metrics.json`
+---
 
-### EDA Notebook
-- `notebooks/01_eda_customer_behavior.ipynb` contains portfolio-ready analysis visuals and EDA-to-model decisions.
-
-## 4) Data Pipeline
-
-- Input source configured in `configs/base.yaml` (`ecommerce_sales_data.csv`)
-- Schema inference for common ecommerce column names
-- Canonical transaction schema: `customer_id`, `order_id`, `order_date`, `amount`
-- Temporal feature and label generation with configurable history and horizon windows
-
-## 5) Modeling Approach
-
-- Classification model: `RandomForestClassifier` for repeat purchase propensity
-- Regression model: `RandomForestRegressor` (trained on positive-repeat customers) for conditional spend
-- Expected spend computed as:
-
-$$
-\text{ExpectedSpend} = P(\text{Repeat}) \times E(\text{Spend} \mid \text{Repeat})
-$$
-
-## 6) Evaluation
-
-Technical metrics:
-- ROC-AUC (cross-validated)
-- PR-AUC (cross-validated)
-- RMSE for expected spend on validation split
-
-Business metrics:
-- Lift@10%
-- Lift@20%
-- Average expected spend among top-ranked customers
-
-## 7) API Deployment
-
-### Local API
-```bash
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-```
-
-### Endpoints
-- `GET /health`
-- `POST /predict` with payload:
-
-```json
-{
-  "rows": [
-    {
-      "frequency_orders": 7,
-      "monetary_sum": 1200,
-      "monetary_mean": 171.4,
-      "active_days": 6,
-      "recency_days": 12,
-      "customer_tenure_days": 190,
-      "avg_order_gap_days": 22
-    }
-  ]
-}
-```
-
-### Docker
-```bash
-docker build -t ecommerce-retention .
-docker run -p 8000:8000 ecommerce-retention
-```
-
-## 8) GitHub & Collaboration Standards
-
-- Use conventional commits (`feat:`, `fix:`, `docs:`)
-- Open PRs with objective, approach, validation evidence
-- CI runs lint + tests on each push/PR
-- Keep notebooks for analysis only; production code stays in `src/`
-
-### Ready-to-Upload Checklist
-
-- [x] Reproducible project structure with config-driven pipeline
-- [x] API + Docker deployment files
-- [x] CI workflow for lint and tests
-- [x] Contributing guide and project documentation
-- [x] Owner and contact details
-
-### GitHub Upload Commands
+## Tests
 
 ```bash
-git add .
-git commit -m "feat: initial end-to-end ecommerce retention project"
-git branch -M main
-git remote add origin https://github.com/Muhammad-Farooq-13/<repo-name>.git
-git push -u origin main
+pytest tests/ -v --cov=src/
+# 1 test: test_features.py (build_customer_features)
 ```
 
-## 9) Job-Market Positioning Tips
+---
 
-For interviews and applications, emphasize:
-- End-to-end ownership (data to deployment)
-- Reproducibility and MLOps mindset (config-driven pipelines, CI, containerization)
-- Business alignment (lift, expected value, campaign prioritization)
-- Trade-off decisions and model limitations
+## Project Structure
 
-### Role-Targeted Positioning
+```
+Ecommerce-retention-ml-pipeline/
+├── src/
+│   ├── data/         make_dataset.py   — CSV loader with auto column inference
+│   ├── features/     build_features.py — RFM feature engineering
+│   ├── models/       train.py  evaluate.py
+│   ├── inference/    predict.py — score_customers()
+│   ├── api/          main.py (FastAPI)
+│   └── utils/        io.py
+├── tests/            test_features.py
+├── configs/          base.yaml
+├── models/           demo_bundle.pkl
+├── scripts/          run_pipeline.py
+├── streamlit_app.py
+├── train_demo.py
+├── requirements.txt
+├── requirements-ci.txt
+└── .github/workflows/ci.yml
+```
 
-#### If applying for Data Scientist roles
-- Lead with experimentation logic, feature engineering rationale, and model evaluation depth.
-- Emphasize your choice of metrics by business objective (ranking quality + lift, not just accuracy).
-- Highlight statistical thinking: leakage prevention, validation strategy, and assumptions.
+---
 
-#### If applying for ML Engineer roles
-- Lead with production readiness: modular `src/`, API serving, containerization, and CI checks.
-- Emphasize reproducibility and operational thinking (config-driven runs, artifact outputs, deployment path).
-- Highlight maintainability decisions: test coverage, clear interfaces, and extensible pipeline stages.
+## License
 
-#### If applying for Product Data Scientist roles
-- Lead with business framing: budget allocation, customer prioritization, and decision support.
-- Emphasize expected value interpretation and how scores map to campaign actions.
-- Highlight communication: architecture diagram, EDA-to-decision narrative, and trade-off clarity.
-
-## 10) Interview Case Study (1-Page Narrative)
-
-### Business Problem
-A marketing team needs to allocate limited retention budget more efficiently. Instead of broad campaigns, they want customer-level prioritization based on likely repeat purchase and expected short-term value.
-
-### My Approach
-1. Defined a prediction horizon (30 days) and translated business goals into measurable targets (ranking quality + lift).
-2. Built a reproducible data pipeline with schema normalization and temporal feature/label generation.
-3. Engineered customer behavior features (frequency, recency, spend intensity, tenure, order cadence).
-4. Trained a two-stage model:
-  - classification for repeat-purchase probability,
-  - regression for conditional spend among repeat buyers.
-5. Evaluated both technical and business outcomes (ROC-AUC, PR-AUC, RMSE, Lift@K).
-6. Exposed the model through a FastAPI endpoint and added CI to enforce quality on changes.
-
-### Demonstrated Impact (Portfolio Framing)
-- Delivered end-to-end ownership from raw data to deployable service.
-- Produced ranked customer outputs that support budget-aware targeting decisions.
-- Built a reusable project template with config-driven workflows, tests, and containerization.
-
-### Trade-Offs & Engineering Decisions
-- **Model choice:** Random forests favored for strong tabular baseline performance and lower complexity.
-- **Validation choice:** practical CV baseline in code; recommend strict time-based validation as next step for production.
-- **Data limitation handling:** implemented fallback entity keying when explicit customer IDs are absent.
-- **Interpretability vs speed:** prioritized explainable feature construction and maintainable modular code.
-
-### What I Would Improve Next
-- Add probability calibration and threshold optimization against campaign budget constraints.
-- Add drift monitoring and scheduled retraining policy.
-- Add experiment tracking for model lineage and faster iteration in team settings.
-
-### 30-Second Interview Pitch Variants
-- **Data Scientist:** “I built an end-to-end retention model that converts transaction history into customer-level repeat-purchase probability and expected spend, validated with both ML and business metrics to support campaign targeting.”
-- **ML Engineer:** “I productionized a tabular ML workflow with reproducible data/feature pipelines, model artifact management, CI checks, and a FastAPI inference service that is container-ready.”
-- **Product Data Scientist:** “I translated a retention budget problem into a prioritization system, producing interpretable ranked recommendations tied to expected value and actionable campaign decisions.”
-
-## 11) Next Enhancements
-
-- Time-based cross-validation and backtesting by cohort
-- Probability calibration (Platt/Isotonic)
-- Drift monitoring and scheduled retraining
-- Experiment tracking (MLflow / Weights & Biases)
+MIT — see [LICENSE](LICENSE).

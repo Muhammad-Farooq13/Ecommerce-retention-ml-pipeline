@@ -10,3 +10,6 @@ artifacts/
 !.gitkeep
 .DS_Store
 .vscode/
+
+# Keep demo bundle
+!models/demo_bundle.pkl
